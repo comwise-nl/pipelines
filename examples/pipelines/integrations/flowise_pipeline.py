@@ -337,8 +337,9 @@ class Pipeline:
                             yield "\n---\n"
                             yield f"\nAnalysis complete. ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n\n"
                         elif chunk["event"] == "token":
-                            # do nothing, this is the flat output of the flow (final)
-                            pass
+                            # This is the actual output content
+                            if "data" in chunk:
+                                yield chunk["data"]
                     elif "error" in chunk:
                         error_msg = f"Error from FlowiseAI: {chunk['error']}"
                         logger.error(error_msg)
