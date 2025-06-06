@@ -31,47 +31,9 @@ class Pipeline:
         FLOWISE_BASE_URL: str = Field(default="", description="FlowiseAI base URL (e.g. http://localhost:3000 (URL before '/api/v1/prediction'))")
         RATE_LIMIT: int = Field(default=5, description="Rate limit for the pipeline (ops/minute)")
  
-        FLOW_0_ENABLED: Optional[bool] = Field(default=False, description="Flow 0 Enabled (make this flow available for use)")
-        FLOW_0_ID: Optional[str] = Field(default=None, description="Flow 0 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_0_NAME: Optional[str] = Field(default=None, description="Flow 0 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_1_ENABLED: Optional[bool] = Field(default=False, description="Flow 1 Enabled (make this flow available for use)")
-        FLOW_1_ID: Optional[str] = Field(default=None, description="Flow 1 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_1_NAME: Optional[str] = Field(default=None, description="Flow 1 Name (human-readable flwo name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_2_ENABLED: Optional[bool] = Field(default=False, description="Flow 2 Enabled (make this flow available for use)")
-        FLOW_2_ID: Optional[str] = Field(default=None, description="Flow 2 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_2_NAME: Optional[str] = Field(default=None, description="Flow 2 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_3_ENABLED: Optional[bool] = Field(default=False, description="Flow 3 Enabled (make this flow available for use)")
-        FLOW_3_ID: Optional[str] = Field(default=None, description="Flow 3 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_3_NAME: Optional[str] = Field(default=None, description="Flow 3 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-        
-        FLOW_4_ENABLED: Optional[bool] = Field(default=False, description="Flow 4 Enabled (make this flow available for use)")
-        FLOW_4_ID: Optional[str] = Field(default=None, description="Flow 4 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_4_NAME: Optional[str] = Field(default=None, description="Flow 4 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_5_ENABLED: Optional[bool] = Field(default=False, description="Flow 5 Enabled (make this flow available for use)")
-        FLOW_5_ID: Optional[str] = Field(default=None, description="Flow 5 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_5_NAME: Optional[str] = Field(default=None, description="Flow 5 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_6_ENABLED: Optional[bool] = Field(default=False, description="Flow 6 Enabled (make this flow available for use)")
-        FLOW_6_ID: Optional[str] = Field(default=None, description="Flow 6 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_6_NAME: Optional[str] = Field(default=None, description="Flow 6 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-        
-        FLOW_7_ENABLED: Optional[bool] = Field(default=False, description="Flow 7 Enabled (make this flow available for use)")  
-        FLOW_7_ID: Optional[str] = Field(default=None, description="Flow 7 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_7_NAME: Optional[str] = Field(default=None, description="Flow 7 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_8_ENABLED: Optional[bool] = Field(default=False, description="Flow 8 Enabled (make this flow available for use)")  
-        FLOW_8_ID: Optional[str] = Field(default=None, description="Flow 8 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_8_NAME: Optional[str] = Field(default=None, description="Flow 8 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-
-        FLOW_9_ENABLED: Optional[bool] = Field(default=False, description="Flow 9 Enabled (make this flow available for use)")  
-        FLOW_9_ID: Optional[str] = Field(default=None, description="Flow 9 ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
-        FLOW_9_NAME: Optional[str] = Field(default=None, description="Flow 9 Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
-        
-        
+        FLOW_ENABLED: Optional[bool] = Field(default=False, description="Flow Enabled (make this flow available for use)")
+        FLOW_ID: Optional[str] = Field(default=None, description="Flow ID (the flow GUID, e.g. b06d97f5-da14-4d29-81bd-8533261b6c88)")
+        FLOW_NAME: Optional[str] = Field(default=None, description="Flow Name (human-readable flow name, no special characters, e.g. news or stock-reader)")
 
     def __init__(self):
         self.name = "FlowiseAI Pipeline"
@@ -82,8 +44,10 @@ class Pipeline:
         )
         
         # Build flow mapping for faster lookup
-        self.flows = {}
-        self.update_flows()
+        self.flow_id = None
+        self.flow_name = None
+        self.api_flow_name = None
+        self.update_flow_details()
 
     def get_flow_details(self, flow_id: str) -> Optional[dict]:
         """
@@ -112,36 +76,25 @@ class Pipeline:
             logger.error(f"Error fetching flow details: {str(e)}")
             return None
 
-    def update_flows(self):
-        """Update the flows dictionary based on the current valve settings"""
-        self.flows = {}
-        # Iterate through each flow
-        for i in range(20):  # Support up to 20 flows
-            enabled_name = f"FLOW_{i}_ENABLED"
-            if not hasattr(self.valves, enabled_name):      # sequential numbering
-                break
-            enabled = getattr(self.valves, f"FLOW_{i}_ENABLED", False)
-            flow_id = getattr(self.valves, f"FLOW_{i}_ID", None)
-            flow_name = getattr(self.valves, f"FLOW_{i}_NAME", None)
-            
-            if enabled and flow_id and flow_name:
-                # Fetch flow details from API
-                flow_details = self.get_flow_details(flow_id)
-                api_name = flow_details.get('name', 'Unknown') if flow_details else 'Unknown'
-                
-                # Store both names in the flows dictionary
-                self.flows[flow_name.lower()] = {
-                    'id': flow_id,
-                    'brief_name': flow_name,
-                    'api_name': api_name
-                }
-        
-        logger.info(f"Updated flows: {[{k: v['api_name']} for k, v in self.flows.items()]}")
+    def update_flow_details(self):
+        """Update the single flow details based on the current valve settings"""
+        self.flow_id = None
+        self.flow_name = None
+        self.api_flow_name = None
+
+        if self.valves.FLOW_ENABLED and self.valves.FLOW_ID and self.valves.FLOW_NAME:
+            flow_details = self.get_flow_details(self.valves.FLOW_ID)
+            self.flow_id = self.valves.FLOW_ID
+            self.flow_name = self.valves.FLOW_NAME.lower()
+            self.api_flow_name = flow_details.get('name', 'Unknown') if flow_details else 'Unknown'
+            logger.info(f"Configured Flow: {self.flow_name} (API Name: {self.api_flow_name}, ID: {self.flow_id})")
+        else:
+            logger.info("No FlowiseAI flow configured or enabled.")
 
     async def on_startup(self):
         """Called when the server is started"""
         logger.debug(f"on_startup:{self.name}")
-        self.update_flows()
+        self.update_flow_details()
 
     async def on_shutdown(self):
         """Called when the server is stopped"""
@@ -150,7 +103,7 @@ class Pipeline:
     async def on_valves_updated(self) -> None:
         """Called when valves are updated"""
         logger.debug(f"on_valves_updated:{self.name}")
-        self.update_flows()
+        self.update_flow_details()
 
     def rate_check(self, dt_start: datetime) -> bool:
         """
@@ -169,33 +122,21 @@ class Pipeline:
         time.sleep(time_buffer - time_diff)
         return True
 
-    def parse_user_input(self, user_message: str) -> tuple[str, str]:
+    def parse_user_input(self, user_message: str) -> str:
         """
-        Parse the user message to extract flow name and query
-        
-        Format expected: @flow_name: query
+        Prepare the user message as the query for the single flow.
         
         Args:
             user_message (str): User's input message
             
         Returns:
-            tuple[str, str]: Flow name and query
+            str: The prepared query
         """
-        # Match pattern flow_name: query
-        pattern = r"^([^:]+):\s*(.+)$"
-        match = re.match(pattern, user_message.strip())
-        
-        if not match:
-            return None, user_message
-        
-        flow_name = match.group(1).strip().lower()
-        query = match.group(2).strip()
-
         date_now = datetime.now().strftime("%Y-%m-%d")
         time_now = datetime.now().strftime("%H:%M:%S")
-        query = f"{query}; today's date is {date_now} and the current time is {time_now}"
+        query = f"{user_message.strip()}; today's date is {date_now} and the current time is {time_now}"
         
-        return flow_name, query
+        return query
 
     def pipe(
         self, 
@@ -225,40 +166,21 @@ class Pipeline:
             else:
                 return error_msg
         
-        # Parse the user message to extract flow name and query
-        flow_name, query = self.parse_user_input(user_message)
+        # Prepare the query
+        query = self.parse_user_input(user_message)
         
-        # If no flow specified or invalid flow, list available flows
-        if flow_name is None or flow_name not in self.flows:
-            available_flows = list(self.flows.keys())
-            if not available_flows:
-                no_flows_msg = "No flows configured. Enable at least one FLOW_X_ENABLED valve and set its ID and NAME."
-                if streaming:
-                    yield no_flows_msg
-                else:
-                    return no_flows_msg
-            
-            flows_list = "\n".join([f"- flow_name: {flow} (description:{self.flows[flow]['api_name']})" for flow in available_flows])
-            help_msg = f"Please specify a flow using the format: <flow_name>: <your query>\n\nAvailable flows:\n{flows_list}"
-            
-            if flow_name is None:
-                help_msg = "No flow specified. " + help_msg
-            else:
-                help_msg = f"Invalid flow '{flow_name}'. " + help_msg
-                
+        # Check if the single flow is configured and enabled
+        if not self.valves.FLOW_ENABLED or not self.flow_id:
+            error_msg = "FlowiseAI flow is not configured or enabled. Please set FLOW_ENABLED, FLOW_ID, and FLOW_NAME valves."
             if streaming:
-                yield help_msg
-                return
+                yield error_msg
             else:
-                return help_msg
-        
-        # Get the flow ID from the map
-        flow_id = self.flows[flow_name]['id']
+                return error_msg
         
         if streaming:
-            yield from self.stream_retrieve(flow_id, flow_name, query, dt_start)
+            yield from self.stream_retrieve(self.flow_id, self.flow_name, query, dt_start)
         else:
-            for chunk in self.static_retrieve(flow_id, flow_name, query, dt_start):
+            for chunk in self.static_retrieve(self.flow_id, self.flow_name, query, dt_start):
                 context += chunk
             return context if context else "No response from FlowiseAI"
 
@@ -426,4 +348,4 @@ class Pipeline:
             logger.error(error_msg)
             yield error_msg
             
-        return 
+        return
