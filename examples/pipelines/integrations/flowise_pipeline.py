@@ -146,10 +146,7 @@ class Pipeline:
         body: dict
     ) -> Union[str, Generator, Iterator]:
         """
-        Main pipeline function. Calls a specified FlowiseAI flow with the provided query.
-        
-        Format expected: @flow_name: query
-        If no flow is specified, a list of available flows will be returned.
+        Main pipeline function. Calls the configured FlowiseAI flow with the provided query.
         """
         logger.debug(f"pipe:{self.name}")
         
