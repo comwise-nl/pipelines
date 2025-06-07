@@ -253,7 +253,7 @@ class Pipeline:
                                     yield message  # yield message for each agent update
                         elif chunk["event"] == "end":
                             # {"event":"end","data":"[DONE]"}
-                            yield "\n---\n"
+                            #yield "\n---\n"
                             yield f"\nAnalysis complete. ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})\n\n"
                         elif chunk["event"] == "token":
                             # This is the actual output content
