@@ -6,7 +6,7 @@ git_url: https://github.com/open-webui/pipelines/
 description: Access FlowiseAI endpoints via chat integration
 required_open_webui_version: 0.4.3
 requirements: requests,flowise>=1.0.4
-version: 0.4.3.1
+version: 0.4.3.4
 licence: MIT
 """
 
