@@ -116,6 +116,7 @@ class Pipeline:
         logger.info(f"Pipeline triggered for message: {user_message}")
         dt_start = datetime.now()
         streaming = body.get("stream", False)
+        session_id = self.chat_id
 
         if not self.valves.FLOWISE_API_KEY or not self.valves.FLOWISE_BASE_URL:
             error_msg = "Missing FlowiseAI configuration."
@@ -130,11 +131,29 @@ class Pipeline:
             return error_msg if not streaming else iter([error_msg])
 
         if streaming:
-            return self.stream_retrieve(self.flow_id, self.flow_name, query, dt_start)
+            return self.stream_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id)
         else:
-            return self.static_retrieve(self.flow_id, self.flow_name, query, dt_start)
+            return self.static_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id)
 
-    def stream_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime) -> Generator:
+    async def inlet(self, body: dict, user: Optional[dict] = None) -> dict:
+        logger.info(f"inlet: {__name__}")
+        logger.debug(f"body: {json.dumps(body, indent=2)}")
+        logger.debug(f"user: {json.dumps(user, indent=2)}")
+        
+        self.user_id = user.get("id") if user else None
+        self.user_name = user.get("name") if user else None
+        self.user_email = user.get("email") if user else None
+        
+        metadata = body.get("metadata", {})
+        self.chat_id = metadata.get("chat_id")
+        self.message_id = metadata.get("message_id")
+
+        logger.debug(f"Extracted chat_id: {self.chat_id}")
+        logger.debug(f"Extracted message_id: {self.message_id}")
+
+        return body
+
+    def stream_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str]) -> Generator:
         if not query:
             yield "Query is empty."
             return
@@ -148,9 +167,11 @@ class Pipeline:
                 api_key=self.valves.FLOWISE_API_KEY
             )
 
-            completion = client.create_prediction(
-                PredictionData(chatflowId=flow_id, question=query, streaming=True)
-            )
+            prediction_data = PredictionData(chatflowId=flow_id, question=query, streaming=True)
+            if session_id:
+                prediction_data.overrideConfig = {"sessionId": session_id}
+
+            completion = client.create_prediction(prediction_data)
         except Exception as e:
             error_msg = f"Exception during streaming: {str(e)}"
             logger.error(error_msg)
@@ -232,7 +253,7 @@ class Pipeline:
                 logger.exception("Error processing stream chunk")
                 yield f"\nError handling chunk: {str(e)}"
 
-    def static_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime) -> Generator:
+    def static_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str]) -> Generator:
         if not query:
             yield "Query is empty."
             return
@@ -240,6 +261,8 @@ class Pipeline:
         api_url = f"{self.valves.FLOWISE_BASE_URL.rstrip('/')}/api/v1/prediction/{flow_id}"
         headers = {"Authorization": f"Bearer {self.valves.FLOWISE_API_KEY}"}
         payload = {"question": query}
+        if session_id:
+            payload["overrideConfig"] = {"sessionId": session_id}
 
         try:
             logger.info(f"Sending static query to FlowiseAI: {query}")
