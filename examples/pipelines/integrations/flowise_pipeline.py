@@ -112,11 +112,49 @@ class Pipeline:
         logger.info(f"Parsed user input: {query}")
         return query
 
+    def safe_get(self, d, *keys):
+        """Safely gets a nested value from a dictionary, returning None if any key in the path is missing or not a dictionary."""
+        current = d
+        for key in keys:
+            if not isinstance(current, dict):
+                return None
+            current = current.get(key)
+            if current is None:
+                return None
+        return current
+
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
         logger.info(f"Pipeline triggered for message: {user_message}")
+
+        # CRITICAL FIX: The 'body' parameter is sometimes received as a JSON string instead of a dictionary.
+        # This block ensures 'body' is always a dictionary before any dictionary methods like .get() are called on it.
+        if isinstance(body, str):
+            try:
+                body = json.loads(body)
+            except json.JSONDecodeError:
+                error_msg = "Error: The 'body' parameter received was an invalid JSON string. It must be a valid JSON object or a dictionary."
+                logger.error(error_msg)
+                return error_msg
+
         dt_start = datetime.now()
         streaming = body.get("stream", False)
         session_id = self.chat_id
+
+        system_message = None
+        # Attempt to extract system message from body.model.info.params.system
+        # This path is used when 'model' is a dictionary containing detailed info.
+        system_message = self.safe_get(body, "model", "info", "params", "system")
+
+        # If system_message is not found in the first path, check the 'messages' array.
+        # This path is used when the system message is part of the chat history,
+        # and 'model' might be a string at the top level.
+        if system_message is None and isinstance(body.get("messages"), list):
+            for msg in body["messages"]:
+                if isinstance(msg, dict) and msg.get("role") == "system" and isinstance(msg.get("content"), str):
+                    system_message = msg["content"]
+                    break
+
+        logger.debug(f"Extracted system_message: {system_message}")
 
         if not self.valves.FLOWISE_API_KEY or not self.valves.FLOWISE_BASE_URL:
             error_msg = "Missing FlowiseAI configuration."
@@ -131,9 +169,9 @@ class Pipeline:
             return error_msg if not streaming else iter([error_msg])
 
         if streaming:
-            return self.stream_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id)
+            return self.stream_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id, system_message)
         else:
-            return self.static_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id)
+            return self.static_retrieve(self.flow_id, self.flow_name, query, dt_start, session_id, system_message)
 
     async def inlet(self, body: dict, user: Optional[dict] = None) -> dict:
         logger.info(f"inlet: {__name__}")
@@ -153,7 +191,7 @@ class Pipeline:
 
         return body
 
-    def stream_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str]) -> Generator:
+    def stream_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str], system_message: Optional[str]) -> Generator:
         if not query:
             yield "Query is empty."
             return
@@ -168,8 +206,17 @@ class Pipeline:
             )
 
             prediction_data = PredictionData(chatflowId=flow_id, question=query, streaming=True)
+            override_config = {}
             if session_id:
-                prediction_data.overrideConfig = {"sessionId": session_id}
+                override_config["sessionId"] = session_id
+            # Add the extracted system message to the overrideConfig for FlowiseAI.
+            # FlowiseAI chatflows can then access this via `req.body.overrideConfig.systemMessage`.
+            # Only include systemMessage if a value is provided, to avoid FlowiseAI errors
+            # when an empty string is passed for a variable expected to be populated.
+            if system_message is not None:
+                override_config["systemMessage"] = system_message
+            if override_config:
+                prediction_data.overrideConfig = override_config
 
             completion = client.create_prediction(prediction_data)
         except Exception as e:
@@ -220,7 +267,7 @@ class Pipeline:
 
                 elif event == "metadata":
                     if self.valves.DISPLAY_METADATA:
-                        yield f"\n[Metadata] {json.dumps(data, indent=2)}"
+                        yield f"\n[Metadata] {json.dumps(data, indent=2)}\n"
 
                 elif event == "end":
                     if self.valves.DISPLAY_END_EVENT:
@@ -253,7 +300,7 @@ class Pipeline:
                 logger.exception("Error processing stream chunk")
                 yield f"\nError handling chunk: {str(e)}"
 
-    def static_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str]) -> Generator:
+    def static_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str], system_message: Optional[str]) -> Generator:
         if not query:
             yield "Query is empty."
             return
@@ -261,8 +308,17 @@ class Pipeline:
         api_url = f"{self.valves.FLOWISE_BASE_URL.rstrip('/')}/api/v1/prediction/{flow_id}"
         headers = {"Authorization": f"Bearer {self.valves.FLOWISE_API_KEY}"}
         payload = {"question": query}
+        override_config = {}
         if session_id:
-            payload["overrideConfig"] = {"sessionId": session_id}
+            override_config["sessionId"] = session_id
+        # Add the extracted system message to the overrideConfig for FlowiseAI.
+        # FlowiseAI chatflows can then access this via `req.body.overrideConfig.systemMessage`.
+        # Only include systemMessage if a value is provided, to avoid FlowiseAI errors
+        # when an empty string is passed for a variable expected to be populated.
+        if system_message is not None:
+            override_config["systemMessage"] = system_message
+        if override_config:
+            payload["overrideConfig"] = override_config
 
         try:
             logger.info(f"Sending static query to FlowiseAI: {query}")
