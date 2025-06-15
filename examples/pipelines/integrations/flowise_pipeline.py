@@ -25,20 +25,19 @@ logger.setLevel("DEBUG")
 
 class Pipeline:
     class Valves(BaseModel):
-        FLOWISE_API_KEY: str = Field(default="", description="FlowiseAI API key")
-        FLOWISE_BASE_URL: str = Field(default="", description="FlowiseAI base URL")
-        RATE_LIMIT: int = Field(default=5, description="Rate limit for the pipeline (ops/minute)")
+        FLOWISE_API_KEY: str = Field(default="changeme", description="FlowiseAI API key")
+        FLOWISE_BASE_URL: str = Field(default="changeme", description="FlowiseAI base URL")
+        RATE_LIMIT: int = Field(default=15, description="Rate limit for the pipeline (ops/minute)")
         FLOW_ENABLED: Optional[bool] = Field(default=False, description="Flow Enabled")
         FLOW_ID: Optional[str] = Field(default=None, description="Flow ID")
         FLOW_NAME: Optional[str] = Field(default=None, description="Flow Name")
         DISPLAY_AGENT_FLOW_EVENT: Optional[bool] = Field(default=True, description="Display agentFlowEvent metadata")
         DISPLAY_NEXT_AGENT_FLOW: Optional[bool] = Field(default=True, description="Display nextAgentFlow metadata")
         DISPLAY_AGENT_FLOW_EXECUTED_DATA: Optional[bool] = Field(default=True, description="Display agentFlowExecutedData metadata")
-        DISPLAY_CALLED_TOOLS: Optional[bool] = Field(default=True, description="Display calledTools metadata")
+        DISPLAY_CALLED_TOOLS: Optional[bool] = Field(default=True, description="Display usedTools")
         DISPLAY_USAGE_METADATA: Optional[bool] = Field(default=True, description="Display usageMetadata")
         DISPLAY_AGENT_REASONING: Optional[bool] = Field(default=True, description="Display agentReasoning metadata")
         DISPLAY_METADATA: Optional[bool] = Field(default=True, description="Display general metadata")
-        DISPLAY_START_EVENT: Optional[bool] = Field(default=True, description="Display start event data")
         DISPLAY_UPDATE_EVENT: Optional[bool] = Field(default=True, description="Display update event data")
         DISPLAY_START_EVENT: Optional[bool] = Field(default=True, description="Display start event data")
         DISPLAY_END_EVENT: Optional[bool] = Field(default=True, description="Display end event data")
@@ -226,8 +225,8 @@ class Pipeline:
             yield error_msg
             return
 
-        if self.valves.DISPLAY_START_EVENT:
-            yield f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        # if self.valves.DISPLAY_START_EVENT:
+        #     yield f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
         for chunk in completion:
             logger.debug(f"Raw chunk: {chunk}")
@@ -249,7 +248,7 @@ class Pipeline:
                 elif event == "start":
                     if self.valves.DISPLAY_START_EVENT:
                         if isinstance(data, str):
-                            yield f"\n__Start__:\n{data}"
+                            yield f"\n_Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:_\n{data}\n"
                         elif isinstance(data, dict) or isinstance(data, list):
                             yield f"\n__Start Data__:\n```json\n{json.dumps(data, indent=2)}\n```"
                         else:
@@ -284,15 +283,43 @@ class Pipeline:
                 elif event == "agentFlowExecutedData":
                     if self.valves.DISPLAY_AGENT_FLOW_EXECUTED_DATA:
                         yield f"\n[Other Event: {event}] {json.dumps(data)}"
-                elif event == "calledTools":
+                elif event == "usedTools":
                     if self.valves.DISPLAY_CALLED_TOOLS:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        formatted_tools = []
+                        if isinstance(data, list):
+                            for tool_call in data:
+                                tool_name = tool_call.get("tool", "Unknown Tool")
+                                tool_input = tool_call.get("toolInput", {})
+                                tool_output = tool_call.get("toolOutput", "")
+
+                                # Attempt to parse toolInput if it's a JSON string
+                                if isinstance(tool_input, str):
+                                    try:
+                                        tool_input = json.loads(tool_input)
+                                    except json.JSONDecodeError:
+                                        pass # Keep as string if not valid JSON
+
+                                # Attempt to parse toolOutput if it's a JSON string
+                                if isinstance(tool_output, str):
+                                    try:
+                                        tool_output = json.loads(tool_output)
+                                    except json.JSONDecodeError:
+                                        pass # Keep as string if not valid JSON
+
+                                formatted_tools.append(
+                                    f"  - Tool: {tool_name}\n"
+                                    # f"    Input: ```json\n{json.dumps(tool_input, indent=2)}\n```\n"
+                                    # f"    Output: ```json\n{json.dumps(tool_output, indent=2)}\n```"
+                                )
+                            yield f"\n\n__Called Tools__:\n" + "\n".join(formatted_tools) + "\n"
+                        else:
+                            yield f"\n\n__Called Tools__:\n```json\n{json.dumps(data, indent=2)}\n```\n"
                 elif event == "usageMetadata":
                     if self.valves.DISPLAY_USAGE_METADATA:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"\n\n[Other Event: {event}] {json.dumps(data)}"
                 elif event == "end":
                     if self.valves.DISPLAY_END_EVENT:
-                        yield "\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        yield "\n\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
                 else:
                     if self.valves.DISPLAY_OTHER_EVENTS:
