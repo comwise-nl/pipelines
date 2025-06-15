@@ -307,7 +307,7 @@ class Pipeline:
                                         pass # Keep as string if not valid JSON
 
                                 formatted_tools.append(
-                                    f"  - Tool: {tool_name}\n"
+                                    f"  - {tool_name}\n"
                                     # f"    Input: ```json\n{json.dumps(tool_input, indent=2)}\n```\n"
                                     # f"    Output: ```json\n{json.dumps(tool_output, indent=2)}\n```"
                                 )
