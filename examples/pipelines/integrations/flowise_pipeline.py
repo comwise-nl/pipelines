@@ -40,6 +40,7 @@ class Pipeline:
         DISPLAY_METADATA: Optional[bool] = Field(default=True, description="Display general metadata")
         DISPLAY_START_EVENT: Optional[bool] = Field(default=True, description="Display start event data")
         DISPLAY_UPDATE_EVENT: Optional[bool] = Field(default=True, description="Display update event data")
+        DISPLAY_START_EVENT: Optional[bool] = Field(default=True, description="Display start event data")
         DISPLAY_END_EVENT: Optional[bool] = Field(default=True, description="Display end event data")
         DISPLAY_OTHER_EVENTS: Optional[bool] = Field(default=True, description="Display other unhandled events")
 
@@ -225,7 +226,8 @@ class Pipeline:
             yield error_msg
             return
 
-        yield f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        if self.valves.DISPLAY_START_EVENT:
+            yield f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
         for chunk in completion:
             logger.debug(f"Raw chunk: {chunk}")
@@ -269,10 +271,6 @@ class Pipeline:
                     if self.valves.DISPLAY_METADATA:
                         yield f"\n[Metadata] {json.dumps(data, indent=2)}\n"
 
-                elif event == "end":
-                    if self.valves.DISPLAY_END_EVENT:
-                        yield "\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-
                 elif "error" in chunk:
                     yield f"Error from FlowiseAI: {chunk['error']}"
 
@@ -292,6 +290,10 @@ class Pipeline:
                 elif event == "usageMetadata":
                     if self.valves.DISPLAY_USAGE_METADATA:
                         yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                elif event == "end":
+                    if self.valves.DISPLAY_END_EVENT:
+                        yield "\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
                 else:
                     if self.valves.DISPLAY_OTHER_EVENTS:
                         yield f"\n[Other Event: {event}] {json.dumps(data)}"
