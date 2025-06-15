@@ -6,7 +6,7 @@ git_url: https://github.com/open-webui/pipelines/
 description: Access FlowiseAI endpoints via chat integration
 required_open_webui_version: 0.4.3
 requirements: requests,flowise>=1.0.4
-version: 0.4.3.7
+version: 0.4.3.8
 licence: MIT
 """
 
@@ -34,7 +34,9 @@ class Pipeline:
         DISPLAY_AGENT_FLOW_EVENT: Optional[bool] = Field(default=True, description="Display agentFlowEvent metadata")
         DISPLAY_NEXT_AGENT_FLOW: Optional[bool] = Field(default=True, description="Display nextAgentFlow metadata")
         DISPLAY_AGENT_FLOW_EXECUTED_DATA: Optional[bool] = Field(default=True, description="Display agentFlowExecutedData metadata")
-        DISPLAY_CALLED_TOOLS: Optional[bool] = Field(default=True, description="Display usedTools")
+        DISPLAY_CALLED_TOOLS: Optional[bool] = Field(default=True, description="Display usedTools name")
+        DISPLAY_CALLED_TOOLS_INPUT: Optional[bool] = Field(default=True, description="Display usedTools input")
+        DISPLAY_CALLED_TOOLS_OUTPUT: Optional[bool] = Field(default=True, description="Display usedTools output")
         DISPLAY_USAGE_METADATA: Optional[bool] = Field(default=True, description="Display usageMetadata")
         DISPLAY_AGENT_REASONING: Optional[bool] = Field(default=True, description="Display agentReasoning metadata")
         DISPLAY_METADATA: Optional[bool] = Field(default=True, description="Display general metadata")
@@ -190,6 +192,33 @@ class Pipeline:
         logger.debug(f"Extracted message_id: {self.message_id}")
 
         return body
+    
+    import json
+
+    def unwrap_json(self, value):
+        import json
+
+        def try_parse_json(val):
+            if isinstance(val, str):
+                val = val.strip()
+                if (val.startswith('{') and val.endswith('}')) or (val.startswith('[') and val.endswith(']')):
+                    try:
+                        return json.loads(val)
+                    except json.JSONDecodeError:
+                        pass
+            return val
+
+        def recurse(val):
+            val = try_parse_json(val)
+
+            if isinstance(val, dict):
+                return {k: recurse(v) for k, v in val.items()}
+            elif isinstance(val, list):
+                return [recurse(v) for v in val]
+            else:
+                return val
+
+        return recurse(value)
 
     def stream_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str], system_message: Optional[str]) -> Generator:
         if not query:
@@ -290,9 +319,10 @@ class Pipeline:
                             for tool_call in data:
                                 tool_name = tool_call.get("tool", "Unknown Tool")
                                 tool_input = tool_call.get("toolInput", {})
-                                tool_output = tool_call.get("toolOutput", "")
+                                tool_output = tool_call.get("toolOutput", {})
+                                logger.debug(f"toolOutput: {json.dumps(tool_output, indent=2)}")
 
-                                # Attempt to parse toolInput if it's a JSON string
+                                # Attempt to parse toolInput if it's a JSON string                                
                                 if isinstance(tool_input, str):
                                     try:
                                         tool_input = json.loads(tool_input)
@@ -300,17 +330,18 @@ class Pipeline:
                                         pass # Keep as string if not valid JSON
 
                                 # Attempt to parse toolOutput if it's a JSON string
-                                if isinstance(tool_output, str):
-                                    try:
-                                        tool_output = json.loads(tool_output)
-                                    except json.JSONDecodeError:
-                                        pass # Keep as string if not valid JSON
+                                # if isinstance(tool_output, str):
+                                #     try:
+                                #         tool_output = json.loads(tool_output)
+                                #     except json.JSONDecodeError:
+                                #         pass # Keep as string if not valid JSON
+                                tool_output = self.unwrap_json(tool_output)
 
-                                formatted_tools.append(
-                                    f"  - {tool_name}\n"
-                                    # f"    Input: ```json\n{json.dumps(tool_input, indent=2)}\n```\n"
-                                    # f"    Output: ```json\n{json.dumps(tool_output, indent=2)}\n```"
-                                )
+                                formatted_tools.append(f"  - {tool_name}\n")
+                                if self.valves.DISPLAY_CALLED_TOOLS_INPUT:
+                                    formatted_tools.append(f"```json\nInput:\n\n{json.dumps(tool_input, indent=2)}\n```\n")
+                                if self.valves.DISPLAY_CALLED_TOOLS_OUTPUT:
+                                    formatted_tools.append(f"```json\nOutput:\n\n{json.dumps(tool_output, indent=2)}\n```")
                             yield f"\n\n__Called Tools__:\n" + "\n".join(formatted_tools) + "\n"
                         else:
                             yield f"\n\n__Called Tools__:\n```json\n{json.dumps(data, indent=2)}\n```\n"
