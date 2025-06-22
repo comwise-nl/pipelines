@@ -251,8 +251,13 @@ class Pipeline:
             logger.debug(f"overrideConfig = {override_config}")
 
             completion = client.create_prediction(prediction_data)
+        except requests.exceptions.RequestException as e:
+            error_msg = f"❌ Network error during streaming:\n```\n{str(e)}\n```"
+            logger.error(error_msg)
+            yield error_msg
+            return
         except Exception as e:
-            error_msg = f"Exception during streaming: {str(e)}"
+            error_msg = f"❌ Exception during streaming:\n```\n{str(e)}\n```"
             logger.error(error_msg)
             yield error_msg
             return
@@ -268,8 +273,13 @@ class Pipeline:
                         chunk = json.loads(chunk)
                     except json.JSONDecodeError:
                         logger.warning(f"Non-JSON chunk: {chunk}")
-                        yield chunk
+                        yield f"⚠️ Invalid JSON chunk:\n```\n{chunk}\n```"
                         continue
+
+                # process normal chunk chunk
+                if "error" in chunk:
+                    yield f"🚨 Error during streaming: {chunk['error']}"
+                    continue
 
                 event = chunk.get("event")
                 data = chunk.get("data")
@@ -353,7 +363,7 @@ class Pipeline:
                         yield f"\n\n[Other Event: {event}] {json.dumps(data)}"
                 elif event == "end":
                     if self.valves.DISPLAY_END_EVENT:
-                        yield "\n\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        yield f"\n\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
                 else:
                     if self.valves.DISPLAY_OTHER_EVENTS:
