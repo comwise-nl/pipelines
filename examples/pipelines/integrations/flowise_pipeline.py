@@ -110,7 +110,7 @@ class Pipeline:
     def parse_user_input(self, user_message: str) -> str:
         date_now = datetime.now().strftime("%Y-%m-%d")
         time_now = datetime.now().strftime("%H:%M:%S")
-        query = f"{user_message.strip()}; today's date is {date_now} and the current time is {time_now}"
+        query = f"{user_message.strip()}"
         logger.info(f"Parsed user input: {query}")
         return query
 
@@ -243,9 +243,12 @@ class Pipeline:
             # Only include systemMessage if a value is provided, to avoid FlowiseAI errors
             # when an empty string is passed for a variable expected to be populated.
             if system_message is not None:
-                override_config["systemMessage"] = system_message
+                if "vars" not in override_config:
+                    override_config["vars"] = {}
+                override_config["vars"]["systemMessageOpenWebUI"] = system_message
             if override_config:
                 prediction_data.overrideConfig = override_config
+            logger.debug(f"overrideConfig = {override_config}")
 
             completion = client.create_prediction(prediction_data)
         except Exception as e:
@@ -376,7 +379,9 @@ class Pipeline:
         # Only include systemMessage if a value is provided, to avoid FlowiseAI errors
         # when an empty string is passed for a variable expected to be populated.
         if system_message is not None:
-            override_config["systemMessage"] = system_message
+            if "vars" not in override_config:
+                override_config["vars"] = {}
+            override_config["vars"]["systemMessageOpenWebUI"] = system_message
         if override_config:
             payload["overrideConfig"] = override_config
 
