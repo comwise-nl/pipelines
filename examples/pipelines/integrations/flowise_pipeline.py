@@ -124,7 +124,7 @@ class Pipeline:
             if current is None:
                 return None
         return current
-
+    
     def pipe(self, user_message: str, model_id: str, messages: List[dict], body: dict) -> Union[str, Generator, Iterator]:
         logger.info(f"Pipeline triggered for message: {user_message}")
 
@@ -262,8 +262,16 @@ class Pipeline:
             yield error_msg
             return
 
-        # if self.valves.DISPLAY_START_EVENT:
-        #     yield f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        # Update Open WebUI status line
+        yield {
+            "event": {
+                "type": "status",
+                "data": {
+                    "description": f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+                    "done": False
+                }
+            }
+        }
 
         for chunk in completion:
             logger.debug(f"Raw chunk: {chunk}")
@@ -290,27 +298,36 @@ class Pipeline:
                 elif event == "start":
                     if self.valves.DISPLAY_START_EVENT:
                         if isinstance(data, str):
-                            yield f"\n_Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:_\n{data}\n"
+                            yield f"_Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}:_\n{data}\n"
                         elif isinstance(data, dict) or isinstance(data, list):
-                            yield f"\n__Start Data__:\n```json\n{json.dumps(data, indent=2)}\n```"
+                            yield f"__Start Data__:\n```json\n{json.dumps(data, indent=2)}\n```"
                         else:
-                            yield f"\n[Start] Unexpected data format: {str(data)}"
+                            yield f"[Start] Unexpected data format: {str(data)}\n"
 
                 elif event == "update":
                     if self.valves.DISPLAY_UPDATE_EVENT:
-                        yield f"\n[Update] {json.dumps(data)}"
+                        yield f"[Update] {json.dumps(data)}\n"
 
                 elif event == "agentReasoning":
+                    yield {
+                        "event": {
+                            "type": "status",
+                            "data": {
+                                "description": f"Thinking...\n",
+                                "done": False
+                            }
+                        }
+                    }
                     if self.valves.DISPLAY_AGENT_REASONING:
                         if isinstance(data, list):
                             for step in data:
-                                yield f"\n[Reasoning Step] {json.dumps(step, indent=2)}"
+                                yield f"[Reasoning Step] {json.dumps(step, indent=2)}\n"
                         else:
-                            yield f"\n[Reasoning] {json.dumps(data, indent=2)}"
+                            yield f"[Reasoning] {json.dumps(data, indent=2)}\n"
 
                 elif event == "metadata":
                     if self.valves.DISPLAY_METADATA:
-                        yield f"\n[Metadata] {json.dumps(data, indent=2)}\n"
+                        yield f"[Metadata] {json.dumps(data, indent=2)}\n"
 
                 elif "error" in chunk:
                     yield f"Error from FlowiseAI: {chunk['error']}"
@@ -318,14 +335,23 @@ class Pipeline:
                 # Handle specific "Other Event" types based on the user's example
                 elif event == "agentFlowEvent":
                     if self.valves.DISPLAY_AGENT_FLOW_EVENT:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"[Other Event: {event}] {json.dumps(data)}\n"
                 elif event == "nextAgentFlow":
                     if self.valves.DISPLAY_NEXT_AGENT_FLOW:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"[Other Event: {event}] {json.dumps(data)}\n"
                 elif event == "agentFlowExecutedData":
                     if self.valves.DISPLAY_AGENT_FLOW_EXECUTED_DATA:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"[Other Event: {event}] {json.dumps(data)}\n"
                 elif event == "usedTools":
+                    yield {
+                        "event": {
+                            "type": "status",
+                            "data": {
+                                "description": f"Tool calling...\n",
+                                "done": False
+                            }
+                        }
+                    }
                     if self.valves.DISPLAY_CALLED_TOOLS:
                         formatted_tools = []
                         if isinstance(data, list):
@@ -360,18 +386,46 @@ class Pipeline:
                             yield f"\n\n__Called Tools__:\n```json\n{json.dumps(data, indent=2)}\n```\n"
                 elif event == "usageMetadata":
                     if self.valves.DISPLAY_USAGE_METADATA:
-                        yield f"\n\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"[Other Event: {event}] {json.dumps(data)}\n"
                 elif event == "end":
                     if self.valves.DISPLAY_END_EVENT:
-                        yield f"\n\nAnalysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        yield f"Analysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                elif event == "agent_trace":
+                    agent_step = data.get("step")
+                    if agent_step == "agent_action":
+                        # Step 1: Parse the "action" field, which is a JSON string
+                        action_str = data.get("action")
+                        action_dict = json.loads(action_str)
 
+                        # Step 2: Get the tool name
+                        tool_name = action_dict.get("tool", "Unknown tool")
+                        yield {
+                            "event": {
+                                "type": "status",
+                                "data": {
+                                    "description": f"Tool calling {tool_name}...\n",
+                                    "done": False
+                                }
+                            }
+                        }
                 else:
                     if self.valves.DISPLAY_OTHER_EVENTS:
-                        yield f"\n[Other Event: {event}] {json.dumps(data)}"
+                        yield f"[Other Event: {event}] {json.dumps(data)}\n"
 
             except Exception as e:
                 logger.exception("Error processing stream chunk")
                 yield f"\nError handling chunk: {str(e)}"
+
+        # Update status line
+        yield {
+            "event": {
+                "type": "status",
+                "data": {
+                    "description": f"Analysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+                    "done": True
+                }
+            }
+        }
 
     def static_retrieve(self, flow_id: str, flow_name: str, query: str, dt_start: datetime, session_id: Optional[str], system_message: Optional[str]) -> Generator:
         if not query:
