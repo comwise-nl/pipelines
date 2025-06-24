@@ -138,6 +138,7 @@ class Pipeline:
                 logger.error(error_msg)
                 return error_msg
 
+        # Get starting time for total analysis time at the end of an LLM turn
         dt_start = datetime.now()
         streaming = body.get("stream", False)
         session_id = self.chat_id
@@ -267,7 +268,7 @@ class Pipeline:
             "event": {
                 "type": "status",
                 "data": {
-                    "description": f"Analysis started... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+                    "description": f"Analysis started at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
                     "done": False
                 }
             }
@@ -416,12 +417,14 @@ class Pipeline:
                 logger.exception("Error processing stream chunk")
                 yield f"\nError handling chunk: {str(e)}"
 
+        dt_end = datetime.now()
+        total_analysis_time = (dt_end - dt_start).total_seconds()
         # Update status line
         yield {
             "event": {
                 "type": "status",
                 "data": {
-                    "description": f"Analysis complete... {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n",
+                    "description": f"Analysis completed at {dt_end.strftime('%Y-%m-%d %H:%M:%S')}, total analysis time: {total_analysis_time:.2f} seconds\n",
                     "done": True
                 }
             }
